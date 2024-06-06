@@ -62,73 +62,64 @@ void *sendMsg(){
 		}
 		if (exitFlag) break;
 
-        char code[100]={0};
-		char name[100]={0};
-		char content[100]={0};
-		int is_num = 1;
+        char beforeSpace[100];
+        char afterSpace[100];
+        memset(beforeSpace,0,100);
+        memset(afterSpace,0,100);
+        int i = 0;
+        int foundSpace = 0;
+        while (msg[i] != '\0') {
+            if(msg[i] == ' '){
+                foundSpace = 1;
+                break;
+            }
+            beforeSpace[i] = msg[i];
+            i++;
+        }
+        if (foundSpace) {
+        strcpy(afterSpace, &msg[i + 1]);
+        } else {
+            // 공백이 없는 경우, afterSpace에 전체 문자열을 복사
+            strcpy(afterSpace, msg);
+            beforeSpace[0] = '\0'; // beforeSpace를 빈 문자열로 설정
+        }
+        int check = atoi(beforeSpace);
+        if(check != 1 && check != 2){
+            sprintf(buf, "%s %s", name, afterSpace);
+        }
+        else{
+            int flag = 1;
+            for(int i=0; i<strlen(afterSpace); i++){
+                if(!isdigit(afterSpace[i])){
+                    flag = 0;
+                    break;
+                }
+            }
 
-		sscanf(buf,"%s %s %s",name,code,content);
+            if(flag == 1){
+                if(check == 1){
+                    sprintf(buf, "%s %d", name, atoi(afterSpace)*2);
+                }
+                else{
+                    sprintf(buf, "%s %d", name, atoi(afterSpace)/2);
+                }
+            }
+            else{
+                for(int i=0; i<strlen(afterSpace); i++){
+                    if(check == 1){
+                        afterSpace[i] += 3;
+                    }
+                    else{
+                        afterSpace[i] -= 3;
+                    }
+                }
+                sprintf(buf, "%s %s", name, afterSpace);
+            }
 
-		memset(buf,0,sizeof(buf));
-
-		if(!strcmp(code,"1")||!strcmp(code,"2")){
-			
-			for(int i=0;i<strlen(content);i++){
-				if(content[i]<'0'||content[i]>'9'){
-					is_num=0;
-					break;
-				}
-			}
-
-			int optn = atoi(code);
-
-			if(is_num){
-
-				int num = atoi(content);
-
-				if(optn==1){
-					num*=2;
-				}
-				else{
-					num/=2;
-				}
-				sprintf(buf,"%s %d\n",name,num);
-			}
-			else{
-				if(optn==1){
-
-					for(int i=0;i<strlen(content);i++){
-						if('Z'-content[i]<3){
-							int rest = 'Z'-content[i];
-							content[i] = 'A'+2-rest;
-						}
-						else{
-							content[i]+=3;
-						}
-					}
-
-				}
-				else{
-					for(int i=0;i<strlen(content);i++){
-						if(content[i]-'A'<3){
-							int rest = content[i]-'A';
-							content[i] = 'Z'-2+rest;
-						}
-						else{
-							content[i]-=3;
-						}
-					}
-				}
-				sprintf(buf,"%s %s\n",name,content);
-			}
-		}
-		else{
-			sprintf(buf,"%s %s\n",name,code);
-		}
+        }
 		write(client_sock, buf, strlen(buf));
 	}
 }
-
 
 void *receiveMsg(){
 	char buf[NAME_SIZE + MSG_SIZE];
