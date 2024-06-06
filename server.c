@@ -1,123 +1,177 @@
+
 #include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <ctype.h>
+#include <netinet/in.h>
 #include <arpa/inet.h>
+#include <string.h>
+#include <pthread.h>
+#include <ctype.h>
 
-int server_sock;
+#define NAME_SIZE 20
+#define MSG_SIZE 100
+
+char name[NAME_SIZE];
+char msg[MSG_SIZE];
+
+pthread_t send_tid;
+pthread_t receive_tid;
+int exitFlag;
+
+char SERVER_IP[20];
+char SERVER_PORT[6];
+
 int client_sock;
-
 void interrupt(int arg){
-    printf("\n You typed Ctrl + C\n");
-    printf("Bye\n");
+	printf("\nYou typped Ctrl + C\n");
+	printf("Bye\n");
 
-    close(client_sock);
-    close(server_sock);
+	pthread_cancel(send_tid);
+	pthread_cancel(receive_tid);
 
-    exit(1);
+	pthread_join(send_tid, 0);
+	pthread_join(receive_tid, 0);
+
+	close(client_sock);
+	exit(1);
 }
-
 void removeEnterChar(char *buf){
-    int len = strlen(buf);
-    for(int i=len-1; i>= 0; i--){
-        if(buf[i] =='\n'){
-            buf[i] ='\0';
-            break;
-        }
-    }
+	int len = strlen(buf);
+	for (int i = len - 1; i >= 0; i--)	{
+		if (buf[i] == '\n') {
+			buf[i] = '\0';
+			break;
+		}
+	}
 }
+void *sendMsg(){
+	char buf[NAME_SIZE + MSG_SIZE + 1];
 
-int main(int argv, char* argc[]){
+	while (!exitFlag){
+		memset(buf, 0, NAME_SIZE + MSG_SIZE);
+		
+    	fgets(msg, MSG_SIZE, stdin);
+        removeEnterChar(msg);
+		if (!strcmp(msg, "exit")){
+			exitFlag = 1;
+			write(client_sock, msg, strlen(msg));
+			break;
+		}
+		if (exitFlag) break;
 
-    signal(SIGINT, interrupt);   
-    
-    const char* PORT = argc[1];
-    server_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if(server_sock == -1){
-        printf("ERROR :: 1_Socket Create Error\n");
-        exit(1);
-    }
-
-    printf("Server On..\n");
-    int optval = 1;
-    setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, (void *)&optval, sizeof(optval));
-
-    struct sockaddr_in server_addr = {0};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port = htons(atoi(PORT));
-    socklen_t server_addr_len = sizeof(server_addr);
-    
-    if(bind(server_sock, (struct sockaddr *)&server_addr, server_addr_len) == -1){
-        printf("ERROR :: 2_bind Error \n");
-        exit(1);
-    }
-    printf("Bind Success\n");
-
-    if(listen(server_sock, 5) == -1){
-        printf("ERROR ::3 _listen Error");
-        exit(1);
-    }
-
-    printf("Wait Client....\n");
-
-    client_sock = 0;
-    struct sockaddr_in client_addr = {0};
-    socklen_t client_addr_len = sizeof(client_addr);
-
-    while(1){
-        memset(&client_addr, 0, client_addr_len);
-
-        /*
-        server로부터 sockaddr을 받아와 client socket에 bind
-        */
-        client_sock = accept(server_sock,(struct sockaddr *)&client_addr, &client_addr_len);
-        if(client_sock == -1){
-            printf("ERROR ::4_Accept Error\n");
-            break;
+        char beforeSpace[100];
+        char afterSpace[100];
+        memset(beforeSpace,0,100);
+        memset(afterSpace,0,100);
+        int i = 0;
+        int foundSpace = 0;
+        while (msg[i] != '\0') {
+            if(msg[i] == ' '){
+                foundSpace = 1;
+                break;
+            }
+            beforeSpace[i] = msg[i];
+            i++;
         }
-        printf("Client Connect Success!\n");
-
-        char buf[100];
-        while(1){
-            memset(buf,0,100);
-            int len = read(client_sock, buf, 99);
-            removeEnterChar(buf);
-            if(len == 0){
-                printf("INFO::Disconnect with client... BYE\n");
-                break;
-            }
-
-            if(!strcmp(buf,"exit")){
-                printf("INFO :: Client want close... BYE\n");
-                break;
-            }
+        if (foundSpace) {
+        strcpy(afterSpace, &msg[i + 1]);
+        } else {
+            // 공백이 없는 경우, afterSpace에 전체 문자열을 복사
+            strcpy(afterSpace, msg);
+            beforeSpace[0] = '\0'; // beforeSpace를 빈 문자열로 설정
+        }
+        int check = atoi(beforeSpace);
+        if(check != 1 && check != 2){
+            sprintf(buf, "%s %s", name, afterSpace);
+        }
+        else{
             int flag = 1;
-            for(int i=0; i<strlen(buf); i++){
-                if(!isdigit(buf[i])){
+            for(int i=0; i<strlen(afterSpace); i++){
+                if(!isdigit(afterSpace[i])){
                     flag = 0;
                     break;
                 }
             }
-            if(flag == 0){
-                printf("%s\n",buf);
+
+            if(flag == 1){
+                if(check == 1){
+                    sprintf(buf, "%s %d", name, atoi(afterSpace)*2);
+                }
+                else{
+                    sprintf(buf, "%s %d", name, atoi(afterSpace)/2);
+                }
             }
             else{
-                printf("%d\n",atoi(buf)*2);
+                for(int i=0; i<strlen(afterSpace); i++){
+                    if(check == 1){
+                        afterSpace[i] += 3;
+                    }
+                    else{
+                        afterSpace[i] -= 3;
+                    }
+                }
+                sprintf(buf, "%s %s", name, afterSpace);
             }
-            memset(buf,0,100);
-            scanf("%s",buf);
-            write(client_sock, buf, 99);
+
         }
-        close(client_sock);
-        printf("Client Bye\n");
-    } 
-    close(server_sock);
-    printf("Server Bye!");
-    
-    return 0;
+		write(client_sock, buf, strlen(buf));
+	}
+}
+
+void *receiveMsg(){
+	char buf[NAME_SIZE + MSG_SIZE];
+	while (!exitFlag){
+		memset(buf, 0, NAME_SIZE + MSG_SIZE);
+		int len = read(client_sock, buf, NAME_SIZE + MSG_SIZE - 1);
+    		if (len == 0){
+			printf("INFO :: Server Disconnected\n");
+			kill(0, SIGINT);
+			exitFlag = 1;
+			break;
+		}
+		printf("%s\n", buf);
+	}
+}
+
+int main(int argc, char *argv[]){
+	if( argc<4 ){
+		printf("ERROR Input [IP Addr] [Port Num] [User Name]\n");
+		exit(1);
+	}
+	strcpy(SERVER_IP, argv[1]);
+	strcpy(SERVER_PORT, argv[2]);
+	sprintf(name, "[%s]", argv[3]);
+
+	signal(SIGINT, interrupt);
+	
+	client_sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (client_sock == -1){
+		printf("ERROR :: 1_Socket Create Error\n");
+		exit(1);
+	}
+	//printf("Socket Create!\n");
+	
+	struct sockaddr_in server_addr = {0};
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+	server_addr.sin_port = htons(atoi(SERVER_PORT));
+	socklen_t server_addr_len = sizeof(server_addr);
+	
+	if (connect(client_sock, (struct sockaddr *)&server_addr, server_addr_len) == -1){
+		printf("ERROR :: 2_Connect Error\n");
+		exit(1);
+	}
+	//printf("Connect Success!\n");
+	
+	pthread_create(&send_tid, NULL, sendMsg, NULL);
+	pthread_create(&receive_tid, NULL, receiveMsg, NULL);
+
+	pthread_join(send_tid, 0);
+	pthread_join(receive_tid, 0);
+
+	close(client_sock);
+	return 0;
 }
